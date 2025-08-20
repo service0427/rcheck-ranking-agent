@@ -4,7 +4,7 @@ module.exports = {
   
   // 브라우저 설정
   browser: {
-    headless: true,  // headless 모드 (서버용)
+    headless: true,   // headless 모드 기본값 (CLI로 오버라이드 가능)
     viewport: { width: 1200, height: 800 },
     args: []  // WebKit은 Chrome 옵션을 지원하지 않음
   },

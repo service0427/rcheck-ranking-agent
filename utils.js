@@ -208,6 +208,40 @@ function hasBlockedExtension(url, extensions) {
   }
 }
 
+// CLI 옵션 파싱
+function parseCliOptions() {
+  const args = process.argv.slice(2);
+  
+  // 도움말 요청
+  if (args.includes('--help') || args.includes('-h')) {
+    showHelp();
+    process.exit(0);
+  }
+  
+  return {
+    headless: !args.includes('--no-headless'), // --no-headless가 있으면 false
+    help: args.includes('--help') || args.includes('-h')
+  };
+}
+
+// 도움말 출력
+function showHelp() {
+  console.log(`${colors.CYAN}WebKit Agent for Coupang Crawler${colors.NC}`);
+  console.log('');
+  console.log('사용법:');
+  console.log('  node index.js [옵션]');
+  console.log('  node simulate.js [옵션]');
+  console.log('');
+  console.log('옵션:');
+  console.log(`  ${colors.GREEN}--no-headless${colors.NC}     브라우저를 GUI 모드로 실행 (기본: headless)`);
+  console.log(`  ${colors.GREEN}--help, -h${colors.NC}        이 도움말 출력`);
+  console.log('');
+  console.log('예시:');
+  console.log('  node index.js                  # headless 모드로 실행');
+  console.log('  node index.js --no-headless    # GUI 모드로 실행');
+  console.log('  node simulate.js --no-headless # 시뮬레이션을 GUI로 실행');
+}
+
 module.exports = {
   colors,
   log,
@@ -217,5 +251,7 @@ module.exports = {
   formatError,
   showProgress,
   matchesDomain,
-  hasBlockedExtension
+  hasBlockedExtension,
+  parseCliOptions,
+  showHelp
 };

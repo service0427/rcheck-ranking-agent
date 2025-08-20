@@ -8,7 +8,7 @@
 const { webkit } = require('playwright');
 const config = require('./config');
 const { searchCoupang } = require('./crawler');
-const { log, countdown, sleep, colors } = require('./utils');
+const { log, countdown, sleep, colors, parseCliOptions } = require('./utils');
 
 // 테스트 데이터 (실제 쿠팡 상품 - API 형식과 동일)
 const TEST_DATA = [
@@ -191,18 +191,27 @@ async function simulate() {
   console.log(`${colors.YELLOW}    🧪 WebKit Agent 시뮬레이션 모드${colors.NC}`);
   console.log(`${colors.YELLOW}${'='.repeat(50)}${colors.NC}`);
   console.log('');
+  // CLI 옵션 미리 파싱해서 모드 표시
+  const cliOptions = parseCliOptions();
+  const modeText = cliOptions.headless ? 'Headless 모드' : 'GUI 모드';
+  
   console.log(`${colors.CYAN}테스트 데이터: ${TEST_DATA.length}개${colors.NC}`);
-  console.log(`${colors.CYAN}브라우저: WebKit (GUI 모드)${colors.NC}`);
+  console.log(`${colors.CYAN}브라우저: WebKit (${modeText})${colors.NC}`);
   console.log('');
   
   try {
+    // CLI 옵션은 이미 파싱했으므로 재사용
+    const headless = cliOptions.headless;
+    
     // 브라우저 초기화
     log('WebKit 브라우저 초기화 중...', 'info');
     browser = await webkit.launch({
-      headless: config.browser.headless
+      headless: headless
       // WebKit은 args를 지원하지 않음
     });
-    log('WebKit 브라우저 시작 완료', 'success');
+    
+    const modeText = headless ? 'Headless 모드' : 'GUI 모드';
+    log(`WebKit 브라우저 시작 완료 (${modeText})`, 'success');
     
     // 시뮬레이션 루프
     let runCount = 0;

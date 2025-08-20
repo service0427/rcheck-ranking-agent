@@ -26,19 +26,33 @@ npm install
 
 ### 2. 실행 방법
 
-#### 실제 운영 모드
+#### 기본 실행 (Headless 모드)
 ```bash
+# 운영 모드 - headless로 실행
 node index.js
-```
-- 실제 API (`http://rcheck.techb.kr/api/topr`)에서 키워드를 가져옴
-- 결과는 준비하지만 실제로 전송하지 않음 (테스트 모드)
 
-#### 시뮬레이션 모드
-```bash
+# 시뮬레이션 모드 - headless로 실행  
 node simulate.js
 ```
-- 테스트 데이터로 크롤링 동작 확인
-- API 호출 없이 로컬에서 테스트
+
+#### GUI 모드 실행
+```bash
+# 운영 모드 - 브라우저 화면 표시
+node index.js --no-headless
+
+# 시뮬레이션 모드 - 브라우저 화면 표시
+node simulate.js --no-headless
+```
+
+#### 도움말
+```bash
+node index.js --help
+node simulate.js --help
+```
+
+**참고:**
+- 기본값: Headless 모드 (서버 환경용)
+- `--no-headless`: GUI 모드로 브라우저 창 표시 (디버깅용)
 
 ## 🔧 주요 기능
 

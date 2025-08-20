@@ -4,7 +4,7 @@ const { webkit } = require('playwright');
 const config = require('./config');
 const { getKeyword, sendResult } = require('./api');
 const { searchCoupang } = require('./crawler');
-const { log, countdown, formatError, colors, matchesDomain, hasBlockedExtension } = require('./utils');
+const { log, countdown, formatError, colors, matchesDomain, hasBlockedExtension, parseCliOptions } = require('./utils');
 
 // 전역 브라우저 인스턴스
 let browser = null;
@@ -19,14 +19,19 @@ const MAX_DELAY = 300000;  // 최대 대기 시간 (300초 = 5분)
  * 브라우저 초기화
  */
 async function initBrowser() {
+  // CLI 옵션 파싱 (config보다 우선)
+  const cliOptions = parseCliOptions();
+  const headless = cliOptions.headless;
+  
   log('WebKit 브라우저 초기화 중...', 'info');
   
   browser = await webkit.launch({
-    headless: config.browser.headless
+    headless: headless
     // WebKit은 args를 지원하지 않음
   });
   
-  log('WebKit 브라우저 시작 완료 (GUI 모드)', 'success');
+  const modeText = headless ? 'Headless 모드' : 'GUI 모드';
+  log(`WebKit 브라우저 시작 완료 (${modeText})`, 'success');
   return browser;
 }
 
