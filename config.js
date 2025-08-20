@@ -54,7 +54,7 @@ module.exports = {
     // 차단할 리소스 타입
     blockedResourceTypes: [
       'image',          // 이미지 파일
-      'stylesheet',     // CSS 파일  
+      // 'stylesheet',     // CSS 파일  
       'font',          // 폰트 파일
       'media'          // 비디오/오디오
     ],
@@ -62,7 +62,7 @@ module.exports = {
     // 차단할 파일 확장자
     blockedExtensions: [
       '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
-      '.css', '.scss', '.less',
+      // '.css', '.scss', '.less',
       '.woff', '.woff2', '.ttf', '.otf',
       '.mp4', '.mp3', '.avi'
     ],
