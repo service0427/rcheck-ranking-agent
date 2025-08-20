@@ -4,7 +4,7 @@ const { webkit } = require('playwright');
 const config = require('./config');
 const { getKeyword, sendResult } = require('./api');
 const { searchCoupang } = require('./crawler');
-const { log, countdown, formatError, colors } = require('./utils');
+const { log, countdown, formatError, colors, matchesDomain, hasBlockedExtension } = require('./utils');
 
 // 전역 브라우저 인스턴스
 let browser = null;
@@ -31,6 +31,79 @@ async function initBrowser() {
 }
 
 /**
+ * 리소스 필터링 설정
+ */
+async function setupResourceFiltering(page) {
+  if (!config.resourceFiltering.enabled) {
+    return;
+  }
+
+  await page.route('**/*', (route) => {
+    const request = route.request();
+    const url = request.url();
+    const resourceType = request.resourceType();
+    
+    // 차단된 도메인 체크
+    if (matchesDomain(url, config.resourceFiltering.blockedDomains)) {
+      return route.fulfill({
+        status: 200,
+        contentType: getContentType(resourceType),
+        body: getReplacementContent(resourceType)
+      });
+    }
+    
+    // 차단된 리소스 타입 체크
+    if (config.resourceFiltering.blockedResourceTypes.includes(resourceType)) {
+      return route.fulfill({
+        status: 200,
+        contentType: getContentType(resourceType),
+        body: getReplacementContent(resourceType)
+      });
+    }
+    
+    // 차단된 확장자 체크
+    if (hasBlockedExtension(url, config.resourceFiltering.blockedExtensions)) {
+      return route.fulfill({
+        status: 200,
+        contentType: getContentType(resourceType),
+        body: getReplacementContent(resourceType)
+      });
+    }
+    
+    // 허용된 요청 계속 진행
+    route.continue();
+  });
+}
+
+/**
+ * 리소스 타입별 Content-Type 반환
+ */
+function getContentType(resourceType) {
+  switch (resourceType) {
+    case 'image': return 'image/png';
+    case 'stylesheet': return 'text/css';
+    case 'script': return 'application/javascript';
+    case 'font': return 'font/woff2';
+    default: return 'text/plain';
+  }
+}
+
+/**
+ * 리소스 타입별 대체 콘텐츠 반환
+ */
+function getReplacementContent(resourceType) {
+  const replacements = config.resourceFiltering.replacements;
+  
+  switch (resourceType) {
+    case 'image': return Buffer.from(replacements.image.split(',')[1], 'base64');
+    case 'stylesheet': return replacements.stylesheet;
+    case 'script': return replacements.script;
+    case 'font': return replacements.font;
+    default: return '';
+  }
+}
+
+/**
  * 단일 키워드 처리
  */
 async function processKeyword(keywordData) {
@@ -42,6 +115,9 @@ async function processKeyword(keywordData) {
     page = await browser.newPage({
       viewport: config.browser.viewport
     });
+    
+    // 리소스 필터링 설정
+    await setupResourceFiltering(page);
     
     // 크롤링 수행
     const result = await searchCoupang(page, keywordData.keyword, keywordData.productCode);

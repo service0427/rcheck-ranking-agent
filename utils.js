@@ -168,6 +168,46 @@ function showProgress(current, total, message = '진행 중') {
   }
 }
 
+// 도메인 매칭 함수 (와일드카드 지원)
+function matchesDomain(url, patterns) {
+  try {
+    const hostname = new URL(url).hostname;
+    
+    return patterns.some(pattern => {
+      // 정확한 매치
+      if (pattern === hostname) {
+        return true;
+      }
+      
+      // 와일드카드 매치 (*.)
+      if (pattern.startsWith('*.')) {
+        const domain = pattern.slice(2);
+        return hostname === domain || hostname.endsWith('.' + domain);
+      }
+      
+      // 앞/뒤 와일드카드
+      if (pattern.includes('*')) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        return regex.test(hostname);
+      }
+      
+      return false;
+    });
+  } catch (error) {
+    return false;
+  }
+}
+
+// URL 확장자 체크
+function hasBlockedExtension(url, extensions) {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return extensions.some(ext => pathname.endsWith(ext.toLowerCase()));
+  } catch (error) {
+    return false;
+  }
+}
+
 module.exports = {
   colors,
   log,
@@ -175,5 +215,7 @@ module.exports = {
   sleep,
   getErrorType,
   formatError,
-  showProgress
+  showProgress,
+  matchesDomain,
+  hasBlockedExtension
 };
