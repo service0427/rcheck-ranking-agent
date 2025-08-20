@@ -92,10 +92,16 @@ async function searchCoupang(page, keyword, productCode) {
       
       // 다음 페이지로 이동
       if (currentPage < maxPages) {
-        const moved = await moveToNextPage(page, currentPage + 1);
-        if (!moved) {
-          log('더 이상 페이지가 없습니다', 'info');
-          break;
+        try {
+          const moved = await moveToNextPage(page, currentPage + 1);
+          if (!moved) {
+            log('더 이상 페이지가 없습니다', 'info');
+            break;
+          }
+        } catch (navError) {
+          // 페이지 이동 중 타임아웃 등의 오류 발생
+          log(`페이지 이동 중 오류 발생: ${navError.message}`, 'error');
+          throw navError; // 상위로 오류 전파
         }
       }
     }
@@ -477,6 +483,13 @@ async function moveToNextPage(page, targetPage) {
     return true;
     
   } catch (error) {
+    // Timeout은 실제 오류로 처리
+    if (error.message.includes('Timeout') || error.message.includes('timeout')) {
+      log(`페이지 ${targetPage} 이동 실패 (타임아웃): ${error.message}`, 'error');
+      throw new Error(`Page navigation timeout: ${error.message}`);
+    }
+    
+    // 그 외의 경우는 페이지가 없는 것으로 처리
     log(`페이지 ${targetPage} 이동 실패: ${error.message}`, 'warning');
     return false;
   }

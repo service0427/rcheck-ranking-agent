@@ -74,5 +74,15 @@ module.exports = {
       script: '// blocked',
       font: ''
     }
+  },
+  
+  // 프록시 설정 (local ↔ 프록시 자동 전환)
+  proxy: {
+    enabled: true,                                        // 프록시 시스템 활성화
+    apiUrl: 'http://mkt.techb.kr:3001/api/proxy/lists',  // 프록시 목록 API
+    refreshInterval: 300000,                             // 5분마다 프록시 목록 새로고침
+    maxRetries: 3,                                       // 프록시별 최대 재시도 횟수
+    timeout: 10000,                                      // API 호출 타임아웃 (10초)
+    rotateOnSuccess: true                                // 성공해도 매번 프록시 변경 (true: 매번 변경, false: 실패시만 변경)
   }
 };

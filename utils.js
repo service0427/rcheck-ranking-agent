@@ -66,13 +66,29 @@ function countdown(seconds, message = '다음 실행까지') {
       }
     }, 1000);
     
-    // Ctrl+C 처리
-    process.on('SIGINT', () => {
+    // Ctrl+C 처리를 위한 임시 핸들러
+    const handleInterrupt = () => {
       clearInterval(interval);
       process.stdout.write('\r\x1b[K');
       log('사용자에 의해 중단됨', 'warning');
       process.exit(0);
-    });
+    };
+    
+    // 리스너 등록
+    process.once('SIGINT', handleInterrupt); // once 사용으로 자동 제거
+    
+    // 타이머 종료 시 리스너 정리
+    const cleanup = () => {
+      clearInterval(interval);
+      process.removeListener('SIGINT', handleInterrupt);
+    };
+    
+    // 정상 완료 시에도 리스너 제거
+    setTimeout(() => {
+      if (remaining <= 0) {
+        process.removeListener('SIGINT', handleInterrupt);
+      }
+    }, seconds * 1000 + 100);
   });
 }
 

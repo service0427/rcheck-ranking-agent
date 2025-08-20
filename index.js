@@ -5,9 +5,11 @@ const config = require('./config');
 const { getKeyword, sendResult } = require('./api');
 const { searchCoupang } = require('./crawler');
 const { log, countdown, formatError, colors, matchesDomain, hasBlockedExtension, parseCliOptions } = require('./utils');
+const ProxyManager = require('./proxy-manager');
 
-// 전역 브라우저 인스턴스
+// 전역 인스턴스들
 let browser = null;
+let proxyManager = null;
 
 // 대기 시간 관리 변수
 let currentDelay = 3000;  // 현재 대기 시간 (밀리초)
@@ -16,23 +18,65 @@ const DELAY_INCREMENT = 10000;  // 증가 단위 (10초)
 const MAX_DELAY = 300000;  // 최대 대기 시간 (300초 = 5분)
 
 /**
- * 브라우저 초기화
+ * 시스템 초기화 (브라우저 + 프록시 매니저)
+ */
+async function initSystem() {
+  // 프록시 매니저 초기화
+  if (config.proxy.enabled) {
+    proxyManager = new ProxyManager(config.proxy.apiUrl, config.proxy.rotateOnSuccess);
+    log('프록시 시스템 초기화 완료', 'success');
+  } else {
+    log('프록시 시스템 비활성화', 'info');
+  }
+  
+  // 브라우저 초기화
+  await initBrowser();
+}
+
+/**
+ * 브라우저 초기화 (프록시 설정 포함)
  */
 async function initBrowser() {
-  // CLI 옵션 파싱 (config보다 우선)
+  // CLI 옵션 파싱
   const cliOptions = parseCliOptions();
-  const headless = cliOptions.headless;
+  const baseOptions = { 
+    headless: cliOptions.headless
+  };
+  
+  // 프록시 설정 적용
+  const browserOptions = proxyManager ? 
+    proxyManager.getBrowserOptions(baseOptions) : 
+    baseOptions;
   
   log('WebKit 브라우저 초기화 중...', 'info');
   
-  browser = await webkit.launch({
-    headless: headless
-    // WebKit은 args를 지원하지 않음
-  });
+  browser = await webkit.launch(browserOptions);
   
-  const modeText = headless ? 'Headless 모드' : 'GUI 모드';
-  log(`WebKit 브라우저 시작 완료 (${modeText})`, 'success');
+  const modeText = cliOptions.headless ? 'Headless 모드' : 'GUI 모드';
+  const connectionText = proxyManager && proxyManager.getStatus().mode === 'proxy' ? 
+    `프록시 (${proxyManager.getStatus().proxy})` : 'local (직접 연결)';
+    
+  log(`WebKit 브라우저 시작 완료 (${modeText}, ${connectionText})`, 'success');
   return browser;
+}
+
+/**
+ * 브라우저 재시작 (프록시 설정 변경 시)
+ */
+async function restartBrowser() {
+  log('브라우저 재시작 중...', 'warning');
+  
+  // 기존 브라우저 종료
+  if (browser) {
+    try {
+      await browser.close();
+    } catch (error) {
+      log(`브라우저 종료 실패: ${error.message}`, 'warning');
+    }
+  }
+  
+  // 새 브라우저 시작
+  await initBrowser();
 }
 
 /**
@@ -109,11 +153,16 @@ function getReplacementContent(resourceType) {
 }
 
 /**
- * 단일 키워드 처리
+ * 단일 키워드 처리 (프록시 로직 포함)
  */
-async function processKeyword(keywordData) {
+async function processKeyword(keywordData, retryCount = 0) {
   let page = null;
   const startTime = Date.now();
+  
+  // 프록시 매니저가 있으면 시도 횟수 증가
+  if (proxyManager) {
+    proxyManager.incrementAttempt();
+  }
   
   try {
     // 새 페이지 생성
@@ -159,6 +208,11 @@ async function processKeyword(keywordData) {
     // 결과 전송 (실제로는 전송하지 않음)
     await sendResult(resultData);
     
+    // 성공 처리
+    if (proxyManager) {
+      proxyManager.markSuccess();
+    }
+    
     // 결과 표시
     if (result.rank > 0) {
       log(`✅ 완료: 순위=${result.rank}, 시간=${elapsedTime}초`, 'success');
@@ -171,7 +225,69 @@ async function processKeyword(keywordData) {
   } catch (error) {
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
-    // 오류 발생 시 API 전송하지 않음
+    // HTTP/2 차단 감지 및 프록시 전환 처리
+    if (proxyManager && proxyManager.isBlockedError(error)) {
+      log(`HTTP/2 차단 감지, 시간=${elapsedTime}초`, 'error');
+      
+      // 재시도 횟수 제한
+      if (retryCount >= config.proxy.maxRetries) {
+        log(`최대 재시도 횟수 초과 (${retryCount}/${config.proxy.maxRetries})`, 'error');
+        return { success: false, error: '최대 재시도 초과' };
+      }
+      
+      try {
+        let needRestart = false;
+        
+        if (proxyManager.getStatus().mode === 'local') {
+          // local → 프록시로 전환
+          await proxyManager.switchToProxy();
+          needRestart = true;
+        } else {
+          // 프록시 → 다른 프록시로 전환
+          needRestart = await proxyManager.switchToAnotherProxy();
+        }
+        
+        if (needRestart) {
+          await restartBrowser();
+        }
+        
+        // 재시도
+        log(`재시도 중... (${retryCount + 1}/${config.proxy.maxRetries})`, 'info');
+        return await processKeyword(keywordData, retryCount + 1);
+        
+      } catch (proxyError) {
+        log(`프록시 전환 실패: ${proxyError.message}`, 'error');
+        // 프록시 전환 실패 시 원래 에러로 처리
+      }
+    }
+    
+    // 프록시 타임아웃 등의 오류 처리
+    if (proxyManager && proxyManager.isProxyError(error)) {
+      log(`프록시 연결 오류, 시간=${elapsedTime}초`, 'error');
+      
+      // 재시도 횟수 제한
+      if (retryCount >= config.proxy.maxRetries) {
+        log(`최대 재시도 횟수 초과 (${retryCount}/${config.proxy.maxRetries})`, 'error');
+        return { success: false, error: '최대 재시도 초과' };
+      }
+      
+      try {
+        // 다른 프록시로 전환
+        const needRestart = await proxyManager.switchToAnotherProxy();
+        if (needRestart) {
+          await restartBrowser();
+        }
+        
+        // 재시도
+        log(`다른 프록시로 재시도 중... (${retryCount + 1}/${config.proxy.maxRetries})`, 'info');
+        return await processKeyword(keywordData, retryCount + 1);
+        
+      } catch (proxyError) {
+        log(`프록시 전환 실패: ${proxyError.message}`, 'error');
+      }
+    }
+    
+    // 일반 오류 처리
     log(`${formatError(error)}, 시간=${elapsedTime}초`, 'error');
     log('⚠️ 오류로 인해 API 전송 안함', 'warning');
     
@@ -193,19 +309,38 @@ async function processKeyword(keywordData) {
  * 메인 실행 함수
  */
 async function main() {
+  // EventEmitter 최대 리스너 수 증가 (메모리 누수 경고 방지)
+  process.setMaxListeners(20);
+  
   console.log(`${colors.CYAN}${'='.repeat(50)}${colors.NC}`);
   console.log(`${colors.CYAN}       WebKit Agent for Coupang Crawler${colors.NC}`);
   console.log(`${colors.CYAN}${'='.repeat(50)}${colors.NC}`);
   console.log('');
   
   try {
-    // 브라우저 초기화
-    await initBrowser();
+    // 시스템 초기화 (브라우저 + 프록시)
+    await initSystem();
     
     // 무한 루프
     while (true) {
       try {
-        // 키워드 가져오기
+        // 1. 프록시 5번 사용 후 local 재시도 확인
+        if (proxyManager && proxyManager.shouldRetryLocal()) {
+          const needRestart = proxyManager.switchToLocal();
+          if (needRestart) {
+            await restartBrowser();
+          }
+        }
+        
+        // 2. 프록시 로테이션 확인 (매 작업마다 프록시 변경)
+        if (proxyManager && proxyManager.shouldRotateProxy()) {
+          const needRestart = proxyManager.rotateProxy();
+          if (needRestart) {
+            await restartBrowser();
+          }
+        }
+        
+        // 3. 키워드 가져오기
         const keywordData = await getKeyword();
         
         if (!keywordData) {
@@ -233,6 +368,11 @@ async function main() {
         
         // 키워드 처리
         const result = await processKeyword(keywordData);
+        
+        // 프록시 통계 로깅 (5번마다)
+        if (proxyManager && (proxyManager.getStatus().stats.localAttempts + proxyManager.getStatus().stats.proxyAttempts) % 5 === 0) {
+          proxyManager.logStats();
+        }
         
         // 결과에 따른 대기 시간 조정
         if (result && result.success) {
